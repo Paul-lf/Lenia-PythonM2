@@ -1,34 +1,3 @@
-"""
-Projet inspiré du script python de Science étonnante
-Lenia
-###############
-Lenia est un automate cellulaire qui peut être vu comme une généralisation du jeu de la vie inventé par Conway 
-Pour rappel le jeu de la vie se base normalement sur une grille infinie
-de cellules en deux dimensions. Ces cellules peuvent prendre deux états :
-    - un état vivant
-    - un état mort
-A l'initialisation, certaines cellules sont vivantes, d'autres mortes.
-Le principe du jeu est alors d'itérer de telle sorte qu'à chaque itération, une cellule va devoir interagir avec
-les huit cellules voisines (gauche, droite, bas, haut et les quatre en diagonales.) L'interaction se fait selon les
-règles suivantes pour calculer l'irération suivante :
-    - Une cellule vivante avec moins de deux cellules voisines vivantes meurt ( sous-population )
-    - Une cellule vivante avec deux ou trois cellules voisines vivantes reste vivante
-    - Une cellule vivante avec plus de trois cellules voisines vivantes meurt ( sur-population )
-    - Une cellule morte avec exactement trois cellules voisines vivantes devient vivante ( reproduction )
-
-Lenia généralise en attribuant une valeur entre zéro et un pour chaque élément de la grille. On donne à cette valeur le nom de vitalité
-car on peut la voir comme le pourcentage de l'espace qu'occupe une cellule vivante. Les règles du jeu sont alors différentes:
-    - On utlise un filtre pour attribuer à chaque cellule une "Energie" (ici on fait une convolution avec un filtre en anneau)
-    - On ajoute alors à la vitalité une valeur en fonction de l'énergie de la cellule à l'aide d'une fonction de croissance
-    - La nouvelle valeur est raaporté à l'intervalle [0, 1] avec la focntion np.clip()
-
-Pour ce projet, on change légèrement les règles en transformant la grille infinie en un tore contenant un
-nombre fini de cellules. Les cellules les plus à gauche ont pour voisines les cellules les plus à droite
-et inversement, et de même les cellules les plus en haut ont pour voisines les cellules les plus en bas
-et inversement.
-
-On itère ensuite pour étudier la façon dont évolue la population des cellules sur la grille.
-"""
 import os
 os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "hide"
 import pygame  as pg
@@ -92,7 +61,7 @@ class Grille:
             K_leniafft = K_leniafft / np.sum(K_leniafft)
             K_lenia = K_leniafft
         
-        elif a == 'multi':
+        elif a == 'multi rings':
             """
             filtre à plusieurs anneaux (pour l'hydrogenium)
             """
@@ -114,7 +83,51 @@ class Grille:
             K_lenia = ring_1 + ring_2 + ring_3
 
             K_lenia = K_lenia/np.sum(K_lenia)
+        
+        elif a == 'multi growth':
+            """
+            fish -> mouvements plus erratiques (comme des demi-tours)
+            """
+            """ Convolution 1 """
+            R = 10
+            y, x = np.ogrid[-N//2:N//2, -M//2:M//2]
+            distance = np.sqrt(x**2 + y**2) / R*3 
 
+            ring_1 = Grille.gauss(distance, mu_filtre, sigma_filtre)
+            ring_1[distance >= 1] = 0
+
+
+            ring_2 = 5*Grille.gauss(distance-1, mu_filtre, sigma_filtre)/12 
+            ring_2[(distance < 1)|(distance >= 2)] = 0
+
+
+            ring_3 = 2 * Grille.gauss(distance -2, mu_filtre, sigma_filtre)/3
+            ring_3[(distance < 2)|(distance >= 3)] = 0 
+
+            K_lenia1 = ring_1 + ring_2 + ring_3
+            K_lenia1 = K_lenia1/np.sum(K_lenia1)
+            
+            """ Convolution 2 """
+            distance = np.sqrt(x**2 + y**2) / R*2 
+
+            ring_1 = Grille.gauss(distance, mu_filtre, sigma_filtre)/12
+            ring_1[distance >= 1] = 0
+
+            ring_2 = Grille.gauss(distance-1, mu_filtre, sigma_filtre) 
+            ring_2[(distance < 1)|(distance >= 2)] = 0
+
+            K_lenia2 = ring_1 + ring_2 
+            K_lenia2 = K_lenia2/np.sum(K_lenia2)
+
+            """ Convultion 3 """
+            distance = np.sqrt(x**2 + y**2) / R 
+
+            K_lenia3 = Grille.gauss(distance, mu_filtre, sigma_filtre)
+            K_lenia3[distance >= 1] = 0
+            
+            K_lenia3 = K_lenia3/np.sum(K_lenia3)
+            
+            K_lenia = [K_lenia1, K_lenia2, K_lenia3]
 
         else:
             sys.exit()
@@ -129,7 +142,7 @@ class Grille:
         import time
         import sys
 
-        dt = 0.1 
+        dt = 0.2
         mu_croissance = 0.15
         sigma_croissance = 0.015
 
@@ -155,31 +168,34 @@ class Grille:
             self.energy = Energie
             G = -1 + 2*Grille.gauss(Energie, mu_croissance, sigma_croissance)
 
-        elif a == 'fft' or a == 'multi':
+        elif a == 'fft' or a == 'multi rings':
 
             Energiefft = np.fft.ifft2( np.fft.fft2(np.fft.fftshift(filtre)) * np.fft.fft2(Vitalite ))
             Energiefft = np.real(Energiefft)
-
-            ########### ICI ON FAIT np.fft.fftshift A LA MAIN POUR COMPRENDRE CE QUE LA FONCTION FAIT. ##############
-            ## ATTENTION : penser à retirer le shift de Energiefft.
-            #print(f"max imaginaire: {np.max(abs(np.imag(Energiefft)))}") # proche de zéro donc pas le problème.
-            #Energiefftbis = np.zeros((N, M))# ou np.fft.fftshift()
-            #divN = N if not N%2 else -1
-            #divM = M if not M%2 else -1
-            #print(f"divN {divN} divM {divM} ")
-            #Energiefftbis[0:N//2, 0:M//2] = Energiefft[N//2:divN, M//2:divM]
-            #Energiefftbis[N//2:divN, M//2:divM] = Energiefft[0:N//2, 0:M//2] 
-            #Energiefftbis[0:N//2, M//2:divM] = Energiefft[N//2:divN, 0:M//2]
-            #Energiefftbis[N//2:divN, 0:M//2] = Energiefft[0:N//2, M//2:divM] 
-            #print(f"maxconvo vs maxTransfo : {[np.min(Energie), np.max(np.real(Energiefftbis))]}")
-            #print(f"convo vs Transfo : { [np.max(abs(Energie- Energiefft)), np.mean(abs(Energie- Energiefft))]}")
-            
             self.energy = Energiefft
             if a == 'fft':
                 G = -1 + 2*Grille.gauss(Energiefft, mu_croissance, sigma_croissance)
             else:
                 G = -1 + 2*Grille.gauss(Energiefft,0.26, 0.036)
 
+        elif a == 'multi growth':
+
+            Energie1 = np.fft.ifft2( np.fft.fft2(np.fft.fftshift(filtre[0])) * np.fft.fft2(Vitalite ))
+            Energie1 = np.real(Energie1)
+            #self.energy = Energie1
+            G1 = -1 + 2*Grille.gauss(Energie1, 0.156, 0.0118)
+            
+            Energie2 = np.fft.ifft2( np.fft.fft2(np.fft.fftshift(filtre[1])) * np.fft.fft2(Vitalite ))
+            Energie2 = np.real(Energie2)
+            #self.energy = Energie2
+            G2 = -1 + 2*Grille.gauss(Energie2, 0.193, 0.049)
+            
+            Energie3 = np.fft.ifft2( np.fft.fft2(np.fft.fftshift(filtre[2])) * np.fft.fft2(Vitalite ))
+            Energie3 = np.real(Energie3)
+            #self.energy = Energie3
+            G3 = -1 + 2*Grille.gauss(Energie3, 0.342, 0.0891)
+            
+            G = np.mean([G1, G2, G3], axis=0)
 
 
         else: 
@@ -203,11 +219,25 @@ class Drawing:
     def __init__(self, width = 800, height = 600):
         self.colors = np.array([np.ogrid[0.:255.:256j], np.ogrid[0.:255.:256j], np.ogrid[0.:255.:256j]]).T
         self.dimensions = (width, height)
-        self.screen = pg.display.set_mode(self.dimensions)
+        self.screen = pg.display.set_mode(self.dimensions)#, pg.FULLSCREEN)
 
     def draw(self, cells):
         indices = (255*cells).astype(dtype=np.int32)
-        surface = pg.surfarray.make_surface(self.colors[indices.T])
+        R = np.ogrid[0.:255.:256j]
+        G = np.ogrid[0.:255.:256j]
+        B = np.ogrid[0.:255.:256j]
+        
+        indices_B = ( 204 * np.sin(cells*np.pi*5/3)  ).astype(dtype=np.int32)
+        indices_B[cells >= 0.60] = ( 130*(cells[cells >= 0.6]**6) ).astype(dtype=np.int32)
+
+        indices_R = np.zeros_like(cells, dtype = np.int32)
+        indices_R[cells<0.5] = (255*(1 - (1-(cells[cells<0.5]/0.5)**0.5 )**0.5)).astype(dtype=np.int32)
+        indices_R[cells >= 0.5] = 255
+        
+        indices_G = (255 * (1- (1- (cells - 0.35)**2)**5)).astype(dtype=np.int32)
+        indices_G[cells < 0.35] = 0
+        colors = np.array([R[indices_R], G[indices_G], B[indices_B]]).T
+        surface = pg.surfarray.make_surface(colors)
         surface = pg.transform.flip(surface, False, True)
         surface = pg.transform.scale(surface, self.dimensions)
         self.screen.blit(surface, (0,0))
@@ -220,6 +250,21 @@ if __name__ == '__main__':
     import sys
     
     pg.init()
+    
+
+    """
+    fish
+    """
+    N = 128
+    M = int(np.ceil((16*N)/9))
+
+    fish = np.array([[0,0,0,0,0,0,0,0,0,0,0,0.06,0.1,0.04,0.02,0.01,0,0,0,0,0,0], [0,0,0,0,0,0,0,0,0.15,0.37,0.5,0.44,0.19,0.23,0.3,0.23,0.15,0.01,0,0,0,0], [0,0,0,0,0,0,0.32,0.78,0.26,0,0.11,0.11,0.1,0.08,0.18,0.16,0.17,0.24,0.09,0,0,0], [0,0,0,0,0.45,0.16,0,0,0,0,0,0.15,0.15,0.16,0.15,0.1,0.09,0.21,0.24,0.12,0,0], [0,0,0,0.1,0,0,0,0,0,0,0,0.17,0.39,0.43,0.34,0.25,0.15,0.16,0.15,0.25,0.03,0], [0,0.15,0.06,0,0,0,0,0,0,0,0.24,0.72,0.92,0.85,0.61,0.47,0.39,0.27,0.12,0.18,0.17,0], [0,0.08,0,0,0,0,0,0,0,0,1.0,1.0,1.0,1.0,0.73,0.6,0.56,0.31,0.12,0.15,0.24,0.01], [0,0.16,0,0,0,0,0,0,0,0.76,1.0,1.0,1.0,1.0,0.76,0.72,0.65,0.39,0.1,0.17,0.24,0.05], [0,0.05,0,0,0,0,0,0,0.21,0.83,1.0,1.0,1.0,1.0,0.86,0.85,0.76,0.36,0.17,0.13,0.21,0.07], [0,0.05,0,0,0.02,0,0,0,0.4,0.91,1.0,1.0,1.0,1.0,1.0,0.95,0.79,0.36,0.21,0.09,0.18,0.04], [0.06,0.08,0,0.18,0.21,0.1,0.03,0.38,0.92,1.0,1.0,1.0,1.0,1.0,1.0,1.0,0.64,0.31,0.12,0.07,0.25,0], [0.05,0.12,0.27,0.4,0.34,0.42,0.93,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,0.97,0.33,0.16,0.05,0.1,0.26,0], [0,0.25,0.21,0.39,0.99,1.0,1.0,1.0,1.0,1.0,1.0,0.86,0.89,0.94,0.83,0.13,0,0,0.04,0.21,0.18,0], [0,0.06,0.29,0.63,0.84,0.97,1.0,1.0,1.0,0.96,0.46,0.33,0.36,0,0,0,0,0,0.03,0.35,0,0], [0,0,0.13,0.22,0.59,0.85,0.99,1.0,0.98,0.25,0,0,0,0,0,0,0,0,0.34,0.14,0,0], [0,0,0,0,0.33,0.7,0.95,0.8,0.33,0.11,0,0,0,0,0,0,0,0.11,0.26,0,0,0], [0,0,0,0,0.16,0.56,0.52,0.51,0.4,0.18,0.01,0,0,0,0,0,0,0.42,0,0,0,0], [0,0,0,0,0.01,0,0.33,0.47,0.33,0.05,0,0,0,0,0,0,0.35,0,0,0,0,0], [0,0,0,0,0,0.26,0.32,0.13,0,0,0,0,0,0,0,0.34,0,0,0,0,0,0], [0,0,0,0,0,0.22,0.25,0.03,0,0,0,0,0,0,0.46,0,0,0,0,0,0,0], [0,0,0,0,0,0,0.09,0.2,0.22,0.23,0.23,0.22,0.3,0.3,0,0,0,0,0,0,0,0]])
+
+    grille_fish = np.zeros((N,M))
+    pos_x, pos_y = 100, 100
+    grille_fish[pos_x:pos_x + fish.shape[0], pos_y:pos_y + fish.shape[1]] = fish
+    
+
 
     """
     hydrogenium
@@ -246,19 +291,19 @@ if __name__ == '__main__':
     grille_orbium[pos_x:(pos_x + orbium.shape[1]), pos_y:(pos_y + orbium.shape[0])] = orbium.T   
     orbium_init = grille_orbium
 
+
     """
     Gaussian spot centerd in the middle
     """
     N = 512
     M = int(np.ceil((16*N)/9))
-    print(f"M est égale à {M//2} \n")
     radius = 36
     y, x = np.ogrid[-N//2:N//2, -M//2:M//2]
     grille_gauss = np.exp(-0.5 * (x*x + y*y) / (radius*radius))
     gaussian_spot = grille_gauss
 
 
-    dico_patterns = {'orbium': orbium_init, 'gaussian_spot': gaussian_spot, 'hydrogenium' : grille_hydrogenium }
+    dico_patterns = {'orbium': orbium_init, 'gaussian_spot': gaussian_spot, 'hydrogenium' : grille_hydrogenium, 'fish' : grille_fish }
     
     a = 'conv'
     choice = 'gaussian_spot'
@@ -286,7 +331,7 @@ if __name__ == '__main__':
         print(f"resolution ecran : {resx,resy}")
     else:
         appli = Drawing()
-
+    print(f"to quit the window press ctrl + w")
 
     pg.event.set_keyboard_grab(True)
     filtre = grid.K_lenia(mu_filtre, sigma_filtre, a)
