@@ -5,7 +5,6 @@ import numpy   as np
 from lenia_game import Drawing, Grille
 
 
-
 if __name__ == '__main__':
     
     import time
@@ -16,7 +15,6 @@ if __name__ == '__main__':
     """
     aquarium
     """
-
     N = 128
     M = int(np.ceil((16*N)/9))
 
@@ -41,6 +39,7 @@ if __name__ == '__main__':
     pos_x,pos_y = N//4,M//2
     for c in range(3):
         grille_aquarium[pos_x:pos_x + aquarium[c].shape[0], pos_y:pos_y + aquarium[c].shape[1],c] = aquarium[c]
+
     aquarium_kernels = [
               {"b":[1],"m":0.272,"s":0.0595,"h":0.138,"r":0.91,"c0":0,"c1":0},
               {"b":[1],"m":0.349,"s":0.1585,"h":0.48,"r":0.62,"c0":0,"c1":0},
@@ -80,6 +79,8 @@ if __name__ == '__main__':
                     {"b":[1], "m":0.342, "s":0.0891, "h":1, "r":1, "c0":0, "c1":0 }]
 
 
+
+
     """
     hydrogenium
     """
@@ -91,8 +92,9 @@ if __name__ == '__main__':
     grille_hydrogenium = np.zeros((N,M))
     pos_x, pos_y = 70, 10
     grille_hydrogenium[pos_x:pos_x + hydrogeminium.shape[0], pos_y:pos_y + hydrogeminium.shape[1]] = hydrogeminium
-
     hydrogenium_kernels = [{"b":[0.5, 1, 0.667], "m":0.26, "s":0.036, "h":1, "r":1, "c0":0, "c1":0}]
+
+
 
     """
     orbium
@@ -105,9 +107,10 @@ if __name__ == '__main__':
     pos_y = N//6
     grille_orbium[pos_x:(pos_x + orbium.shape[1]), pos_y:(pos_y + orbium.shape[0])] = orbium.T   
     orbium_init = grille_orbium
-
-
     orbium_kernels = [{"b":[1], "m":0.15, "s":0.015, "h":1, "r":1, "c0":0, "c1":0}]
+    
+
+
     """
     Gaussian spot centerd in the middle
     """
@@ -117,16 +120,23 @@ if __name__ == '__main__':
     y, x = np.ogrid[-N//2:N//2, -M//2:M//2]
     grille_gauss = np.exp(-0.5 * (x*x + y*y) / (radius*radius))
     gaussian_spot = grille_gauss
-
     gaussian_spot_kernels = [{"b":[1], "m":0.15, "s":0.015, "h":1, "r":1, "c0":0, "c1":0}]
 
 
+
+
+
+
+
+
+
     dico_patterns = {
-            'orbium':[orbium_init,'multi canaux', 13, 1, orbium_kernels], 
-            'gaussian_spot':[gaussian_spot,'multi canaux',13, 1, gaussian_spot_kernels], 
-            'hydrogenium':[grille_hydrogenium,'multi canaux',18, 1, hydrogenium_kernels], 
-            'fish':[grille_fish,'multi canaux',10, 1, fish_kernels], 
-            'aquarium':[grille_aquarium,'multi canaux',12, 3, aquarium_kernels] }
+            'orbium':[orbium_init,'fft', 13, 1, orbium_kernels], 
+            'gaussian_spot':[gaussian_spot,'conv',13, 1, gaussian_spot_kernels], 
+            'hydrogenium':[grille_hydrogenium,'fft',18, 1, hydrogenium_kernels], 
+            'fish':[grille_fish,'fft',10, 1, fish_kernels], 
+            'aquarium':[grille_aquarium,'fft',12, 3, aquarium_kernels] }
+
 
 
     mu_filtre = 0.5
@@ -142,10 +152,6 @@ if __name__ == '__main__':
     except KeyError:
         print("No such pattern. Available ones are:", dico_patterns.keys())
         exit(1)
-    grid = Grille(init_pattern[2], init_pattern[3], init_pattern[4], init_pattern[0])
-    #if len(sys.argv) > 2 :
-     #   a = str(sys.argv[2])
-     #   print(f"Choix du type de calcul : {a}")
     if len(sys.argv) > 2 :
         dt = float(sys.argv[2])
         print(f"Pas de temps : {dt}")
@@ -159,8 +165,12 @@ if __name__ == '__main__':
         appli = Drawing()
     print(f"to quit the window press ctrl + w")
 
-    pg.event.set_keyboard_grab(True)
+
+
+    grid = Grille(init_pattern[2], init_pattern[3], init_pattern[4], init_pattern[0])
     filtre = grid.K_lenia(mu_filtre, sigma_filtre, init_pattern[1])
+
+    pg.event.set_keyboard_grab(True) 
     mustContinue = True
     while mustContinue:
         
