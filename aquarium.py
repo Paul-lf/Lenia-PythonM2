@@ -26,7 +26,8 @@ class Grille:
             dim = np.random.randint(200,500,dtype=np.uint8)
             self.dimensions = (dim, dim)
             self.cells = np.random.uniform(0,1, size=(dim, dim), dtype=np.double)
-
+        self.nbr_channels = 1
+        self.nbr_convos_per_channels = [0]
 
     @staticmethod
     def gauss(x, mu, sigma):
@@ -149,36 +150,41 @@ class Grille:
               {"b":[1],"m":0.262,"s":0.0877,"h":0.42,"r":0.68,"c0":1,"c1":2},
               {"b":[1/6,1,0],"m":0.412,"s":0.1101,"h":0.43,"r":0.82,"c0":2,"c1":0},
               {"b":[1],"m":0.201,"s":0.0786,"h":0.278,"r":0.82,"c0":2,"c1":1}]
-
-            K_lenia = [[]]*3
             y, x = np.ogrid[-N//2:N//2, -M//2:M//2]
             distance = np.sqrt(x**2 + y**2) / R 
-
-            for convo in kernels:
+            K_lenia = [[]]*3
+            distance = np.sqrt(x**2 + y**2) / R 
+            K_lenia = kernels.copy()
+            compte = [0]
+            for k, convo in enumerate(kernels):
                 dist = distance * len(convo["b"])
                 filtre = np.zeros((N,M))
+                if convo["c1"]+1 > self.nbr_channels:
+                    self.nbr_channels = convo["c1"]+1
+                    self.nbr_convos_per_channels = self.nbr_convos_per_channels + [1]
+                else:
+                    self.nbr_convos_per_channels[convo["c1"]] = self.nbr_convos_per_channels[convo["c1"]] + 1
                 
                 for i in range(len(convo["b"])):
                     ring =  convo["b"][i] * Grille.gauss((dist - i*convo["r"])/convo["r"], mu_filtre, sigma_filtre)
                     ring[ (dist >= (i+1)*convo["r"]) | (dist < i * convo["r"]) ] = 0
                     filtre = filtre + ring
                 filtre = filtre/np.sum(filtre)
-                K_lenia[convo["c1"]] = K_lenia[convo["c1"]] + [ [filtre, convo["c0"], convo["h"], convo["m"], convo["s"]] ] # La liste de 3 elements contenants la liste des convolutions pour chaque canal.
-                
+                filtre = np.fft.fft2(np.fft.fftshift(filtre))
+                K_lenia[k]["b"] = filtre
+
         else:
             sys.exit()
-        
-        return K_lenia 
+        return K_lenia  
 
 
 
 
   
     
-    def compute_next_iteration(self, filtre, a = 'conv', dt = 0.1):
+    def compute_next_iteration(self, filtre, dt, a = 'conv'):
         import time
-        import sys
-
+        t1 =time.time()
         mu_croissance = 0.15
         sigma_croissance = 0.015
 
@@ -234,28 +240,19 @@ class Grille:
             G = np.mean([G1, G2, G3], axis=0)
         
         elif a == 'canaux':
-            """ ATTENTION : ici filtre est une liste à 3 dimensions -> 3 élements pour la première et 5 pour les autres"""
-            V1 = self.cells[:, :, 0]
-            V2 = self.cells[:, :, 1]
-            V3 = self.cells[:, :, 2]
-            
-            V = [V1, V2, V3]
-            
-            G = [[]]*3
-            for i, convos in enumerate(filtre):
-                for kernel in convos:
-                    E = np.fft.ifft2( np.fft.fft2(np.fft.fftshift(kernel[0])) * np.fft.fft2(V[kernel[1]] ))
-                    E = np.real(E)
-                    G[i] = G[i] + [ ( -1 + 2*Grille.gauss(E, kernel[3], kernel[4]) ) * kernel[2] ]
-                G[i] =  np.mean(G[i],axis = 0)
-            G = np.array([G[0].T, G[1].T, G[2].T]).T
-            
-            test_filtre = np.zeros_like(Vitalite) 
-            for k in range(3):
-                for i in range(5):
-                    test_filtre[:, :, k] = test_filtre[:, :, k] + filtre[k][i][0]
+            G = np.array([np.zeros((128,228))]*3)
+            t2 = time.time()
 
-            self.energy = test_filtre
+            fft = [ np.fft.fft2(self.cells[:, :, k] ) for k in range(self.nbr_channels) ]
+
+            for convos in filtre:
+                #for kernel in convos:
+                E = np.real(np.fft.ifft2( convos["b"] * fft[convos["c0"]]))
+                G[convos["c1"]] += ( -1 + 2*Grille.gauss(E, convos["m"], convos["s"]) )*convos["h"] 
+            #G = np.stack( np.mean(G, axis=1), axis=2)
+            
+            t3 = time.time()
+            G = np.stack( G/np.array( self.nbr_convos_per_channels[convos["c1"]]), axis=2)
 
         else:
             print("essayez 'convo', 'multi', 'fft' ou 'canaux' à la place de {a}")
@@ -266,10 +263,9 @@ class Grille:
         """
         Calcule de la prochaine génération :
         """
-        Vitalite = Vitalite + G*dt
-        self.cells = np.clip(Vitalite, 0,1)
- 
-
+                
+        self.cells = np.clip(Vitalite + G*dt, 0, 1)
+        print(f"TEST {t2-t1:2.2e} & {t3-t2:2.2e}")
 
 
 
@@ -321,6 +317,7 @@ class Drawing:
         
         pg.display.update()
 
+ 
 
 if __name__ == '__main__':
     
@@ -414,12 +411,13 @@ if __name__ == '__main__':
 
     dico_patterns = {'orbium': orbium_init, 'gaussian_spot': gaussian_spot, 'hydrogenium' : grille_hydrogenium, 'fish' : grille_fish, 'aquarium' : grille_aquarium }
     
-    a = 'conv'
+    a = 'fft'
     choice = 'gaussian_spot'
     R = 13
     mu_filtre = 0.5
     sigma_filtre = 0.15
-    dt = 0.1
+    dt =0.1
+
 
     if len(sys.argv) > 1 :
         choice = sys.argv[1]
@@ -452,11 +450,12 @@ if __name__ == '__main__':
     while mustContinue:
         
         t1 = time.time()
-        diff = grid.compute_next_iteration(filtre, a, dt)
+        diff = grid.compute_next_iteration(filtre, dt, a)
         t2 = time.time()
 #        time.sleep(500) # A régler ou commenter pour vitesse maxi
-        #appli.draw(filtre/np.max(filtre))      # pour afficher les filtres  dans tous les autres cas
-        appli.draw(grid.cells)#/np.max(grid.energy))    # pour afficher les filtres pour 'aquarium' 
+        
+      #  appli.draw(filtre/np.max(filtre))
+        appli.draw(grid.cells)
         t3 = time.time()
         for event in pg.event.get():
             if event.type == pg.QUIT:

@@ -74,9 +74,9 @@ if __name__ == '__main__':
     pos_x, pos_y = 100, 100
     grille_fish[pos_x:pos_x + fish.shape[0], pos_y:pos_y + fish.shape[1]] = fish
     fish_kernels = [
-                    {"b":[1, 5/12, 2/3], "m":0.156, "s":0.0118, "h":1, "r":1, "c0":0, "c1":0 },
-                    {"b":[1/12, 1], "m":0.193, "s":0.049, "h":1, "r":1, "c0":0, "c1":0 },
-                    {"b":[1], "m":0.342, "s":0.0891, "h":1, "r":1, "c0":0, "c1":0 }]
+                    {"b":[1, 5/12, 2/3], "m":0.156, "s":0.0118, "h":1/3, "r":1, "c0":0, "c1":0 },
+                    {"b":[1/12, 1], "m":0.193, "s":0.049, "h":1/3, "r":1, "c0":0, "c1":0 },
+                    {"b":[1], "m":0.342, "s":0.0891, "h":1/3, "r":1, "c0":0, "c1":0 }]
 
 
 
@@ -128,8 +128,6 @@ if __name__ == '__main__':
 
 
 
-
-
     dico_patterns = {
             'orbium':[orbium_init,'fft', 13, 1, orbium_kernels], 
             'gaussian_spot':[gaussian_spot,'conv',13, 1, gaussian_spot_kernels], 
@@ -139,10 +137,11 @@ if __name__ == '__main__':
 
 
 
-    mu_filtre = 0.5
-    sigma_filtre = 0.15
-    dt = 0.1
 
+    mu_filter = 0.5
+    sigma_filter = 0.15
+    dt = 0.1
+    choice = 'orbium'
 
     if len(sys.argv) > 1 :
         choice = sys.argv[1]
@@ -168,30 +167,26 @@ if __name__ == '__main__':
 
 
     grid = Grille(init_pattern[2], init_pattern[3], init_pattern[4], init_pattern[0])
-    filtre = grid.K_lenia(mu_filtre, sigma_filtre, init_pattern[1])
+    K_lenia = grid.K_lenia(mu_filter, sigma_filter, init_pattern[1])
 
-    pg.event.set_keyboard_grab(True) 
     mustContinue = True
     while mustContinue:
         
         t1 = time.time()
-        diff = grid.compute_next_iteration(filtre, init_pattern[1], dt)
+        diff = grid.compute_next_iteration(K_lenia, init_pattern[1], dt)
         t2 = time.time()
 #        time.sleep(500) # A régler ou commenter pour vitesse maxi
-        #appli.draw(filtre/np.max(filtre))      # pour afficher les filtres  dans tous les autres cas
-        appli.draw(grid.cells)#/np.max(grid.energy))    # pour afficher les filtres pour 'aquarium' 
+        appli.draw(grid.cells)
         t3 = time.time()
+
         for event in pg.event.get():
             if event.type == pg.QUIT:
                 mustContinue = False
             elif event.type == pg.KEYDOWN:
+                pg.event.set_keyboard_grab(True)
                 if event.mod & pg.KMOD_CTRL and event.key == pg.K_w:
                     mustContinue = False
         print(f"Temps calcul prochaine generation : {t2-t1:2.2e} secondes, temps affichage : {t3-t2:2.2e} secondes\r", end='');
+    
     pg.quit()
-
-
-
-
-
 
