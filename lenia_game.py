@@ -26,7 +26,7 @@ class Grille:
     Exemple :
        grid = Grille( (10,10), init_pattern=np.array([(2,2),(0,2),(4,2),(2,0),(2,4)], color_life=pg.Color("red"), color_dead=pg.Color("black"))
     """
-    def __init__(self, R: int, canaux: int, kernels: dict, init_pattern = None):
+    def __init__(self, R: int, channels: int, kernels: dict, init_pattern = None):
         import random
         
         if init_pattern is not None:
@@ -34,15 +34,18 @@ class Grille:
             self.cells = init_pattern
             self.R = R
             self.kernels = kernels
-            self.canaux = canaux
+            self.channels = channels
         
         else:
             dim = np.random.randint(200, 500, dtype=np.uint8)
             self.dimensions = (dim, dim)
             self.cells = np.random.uniform(0, 1, size=(dim, dim), dtype=np.double)
             self.R = 13
-            self.canaux = 1 
+            self.channels = 1 
 
+    @staticmethod
+    def soft_clip(x, vmin, vmax):
+      return 1 / (1 + np.exp(-4 * (x - 0.5)))
 
 
     @staticmethod
@@ -68,16 +71,16 @@ class Grille:
         if a == 'conv':
             R = self.R
             y, x = np.ogrid[-R : R , -R : R]
-            distance = np.sqrt( (1 + x)**2 + (1 + y)**2 ) / R # on considère que la distance séparant 13 éléments de la grille vaut 1. 
+            distance = np.sqrt( (1 + x)**2 + (1 + y)**2 ) / R # 13 cells length equals to 1 unit of distance. 
             K_lenia = Grille.gauss(distance, mu_filter, sigma_filter)
             K_lenia[distance > 1] = 0
             K_lenia = K_lenia / np.sum(K_lenia)
             
         
-        elif a =='fft':
-            nb_canaux = self.canaux
+        elif a =='fft' or a == 'target' or a == ['fft', 'fft', 'target'] or a == 'pacman':
+            nb_channels = self.channels
             kernels = self.kernels
-            K_lenia = [[]] * nb_canaux
+            K_lenia = [[]] * nb_channels
             y, x = np.ogrid[-N//2 : N//2, -M//2 : M//2]
             distance = np.sqrt( x**2 + y**2 ) / self.R 
 
@@ -97,7 +100,7 @@ class Grille:
         
 
         else:
-            print("essayez 'convo', 'fft'à la place de {a}")
+            print(f"Try 'convo', 'fft' instead of {a}")
             sys.exit()
        
         return K_lenia 
@@ -122,42 +125,65 @@ class Grille:
             G = -1 + 2*Grille.gauss(Energie, mu_croissance, sigma_croissance)
 
 
+        
+        elif a == 'fft' or a == 'target' or a == ['fft', 'fft', 'target'] or a == 'pacman':
 
-        elif a == 'fft':
 
-            if self.canaux == 1:
+            if self.channels == 1:
                 G = np.zeros(self.dimensions)
-                for kernel in K_lenia[0]:
-                    E = np.fft.ifft2( kernel[iKERNEL]* np.fft.fft2(self.cells))
-                    E = np.real(E)
-                    G += ( -1 + 2*Grille.gauss(E, kernel[iMU], kernel[iSIGMA]) ) * kernel[iH] 
+                if a == 'fft':
+                    for kernel in K_lenia[0]:
+                        E = np.fft.ifft2( kernel[iKERNEL]* np.fft.fft2(self.cells))
+                        E = np.real(E)
+                        G +=  ( -1 + 2*Grille.gauss(E, kernel[iMU], kernel[iSIGMA]) ) * kernel[iH] 
+                else:
+                    for kernel in K_lenia[0]:
+                        E = np.fft.ifft2( kernel[iKERNEL]* np.fft.fft2(self.cells))
+                        E = np.real(E)
+                        G +=  ( Grille.gauss(E, kernel[iMU], kernel[iSIGMA]) ) * kernel[iH]
+                    G -= Vitalite
 
 
-            elif self.canaux > 1 :
+            elif self.channels > 1 :
                 """ ATTENTION : ici filter est une liste à 3 dimensions -> 3 élements pour la première et 5 pour les autres"""
                 
                 G = np.zeros(self.dimensions, dtype = np.double)
-                for channel, channel_kernels in enumerate(K_lenia):
-                    for kernel in channel_kernels:
-                        E = np.fft.ifft2( kernel[iKERNEL] * np.fft.fft2(self.cells[:, :, kernel[iC0]] ))
-                        E = np.real(E)
-                        G[:,:,channel] += ( -1 + 2*Grille.gauss(E, kernel[iMU], kernel[iSIGMA]) ) * kernel[iH] 
                 
-        
+                if type(a) == str:
+                    for channel, channel_kernels in enumerate(K_lenia):
+                        for kernel in channel_kernels:
+                            E = np.fft.ifft2( kernel[iKERNEL] * np.fft.fft2(self.cells[:, :, kernel[iC0]] ))
+                            E = np.real(E)
+                            G[:,:,channel] += ( -1 + 2*Grille.gauss(E, kernel[iMU], kernel[iSIGMA]) ) * kernel[iH] 
+                else:
+                    for channel, channel_kernels in enumerate(K_lenia):
+                        for kernel in channel_kernels:
+                            E = np.fft.ifft2( kernel[iKERNEL] * np.fft.fft2(self.cells[:, :, kernel[iC0]] ))
+                            E = np.real(E)
+                            if channel != 2:
+                                 G[:,:,channel] += ( -1 + 2*Grille.gauss(E, kernel[iMU], kernel[iSIGMA])) * kernel[iH]
+                            else:
+                                G[:, :, channel] +=  Grille.gauss(E, kernel[iMU], kernel[iSIGMA]) * kernel[iH]
+                        G[:, :, 2] -= Vitalite[:, :, 2]
+
+
+
+
         else:
-            print("essayez 'convo', 'fft'à la place de {a}")
+            print(f"Try 'convo', 'fft', 'pacman', 'target', instead of {a}")
             sys.exit()
 
 
 
         """
-        Calcule de la prochaine génération :
+        Compute the next generation of cells :
         """
-        self.cells = np.clip( Vitalite + G*dt, 0,1)
+        if a != 'pacman':
+            self.cells = np.clip( Vitalite + dt * G , 0,1)
+        else:
+            self.cells = Grille.soft_clip( Vitalite + dt * G , 0,1)
+
  
-
-
-
 
 
 class Drawing:
@@ -166,14 +192,21 @@ class Drawing:
         self.dimensions = (width, height)
         self.screen = pg.display.set_mode(self.dimensions)#, pg.FULLSCREEN)
 
-    def draw(self, cells):
+    def draw(self, cells, a):
 
         """
         Surface with pygame
         """
-        if len(cells.shape) == 3:
+        if len(cells.shape) == 3: # there are more than one channel
             indices = np.array([(255*cells[:,:,i].T).astype(dtype=np.int32) for i in range(3)]).T
-            colors = np.array([self.colors[:,i][indices[:,:,i]] for i in range(3)])
+
+            # change colors for pacman pattern:
+            if a == 'pacman':
+                indices = np.roll(indices, -1, axis = 2)
+                colors = np.array([self.colors[:,i][indices[:,:,i]] for i in range(3)])
+            else:
+                colors = np.array([self.colors[:,i][indices[:,:,i]] for i in range(3)])
+            
             surface = pg.surfarray.make_surface(colors.T)
             surface = pg.transform.flip(surface, False, True)
             surface = pg.transform.scale(surface, self.dimensions)
@@ -181,7 +214,7 @@ class Drawing:
 
         elif len(cells.shape) == 2:
             
-            """ J'essaye de refaire matplotlip.inferno à la main """
+            """ Trying to imitate matplotlib.pyplot.inferno """
             R = np.ogrid[0.:255.:256j]
             G = np.ogrid[0.:255.:256j]
             B = np.ogrid[0.:255.:256j]
@@ -201,8 +234,5 @@ class Drawing:
             surface = pg.transform.flip(surface, False, True)
             surface = pg.transform.scale(surface, self.dimensions)
             self.screen.blit(surface, (0,0))
-        else:
-            print(f"problem in class Drawing")
-            sys.exit()
         
         pg.display.update()
