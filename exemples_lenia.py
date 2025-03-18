@@ -262,28 +262,28 @@ if __name__ == '__main__':
     choice = 'orbium'
 
     if len(sys.argv) > 1 :
-        if sys.argv == '-help' or '-h':
+        if sys.argv[1] == '-help' or sys.argv[1] == '-h':
             print(f"Available patterns : {list( dico_patterns.keys())}")
             print(f"Enter : $python3 exemples_lenia.py <Available pattern>")
             sys.exit()
         else:
             choice = sys.argv[1]
-    print(f"Pattern initial choisi : {choice}")
+    print(f"Initial pattern chosen : {choice}")
     try:
         init_pattern = dico_patterns[choice]
         dt = init_pattern[5]
     except KeyError:
-        print("No such pattern. Available ones are:", dico_patterns.keys())
+        print("No such pattern is available. Choose among the following:", dico_patterns.keys())
         exit(1)
     if len(sys.argv) > 2 :
         dt = float(sys.argv[2])
-        print(f"Pas de temps : {dt}")
+        print(f"The time step is : {dt}")
 
     if len(sys.argv) > 3 :
         resx = int(sys.argv[3])
         resy = int(sys.argv[4])
         appli = Drawing( width = resx, height = resy)
-        print(f"resolution ecran : {resx,resy}")
+        print(f"Screen resolution : {resx,resy}")
     else:
         appli = Drawing()
     print(f"to quit the window press ctrl + w")
@@ -318,7 +318,7 @@ if __name__ == '__main__':
                 pg.event.set_keyboard_grab(True)
                 if event.mod & pg.KMOD_CTRL and event.key == pg.K_w:
                     mustContinue = False
-        print(f"Temps calcul prochaine generation : {t2-t1:2.2e} secondes, temps affichage : {t3-t2:2.2e} secondes\r", end='');
+        print(f"Time to compute the next generation : {t2-t1:2.2e} seconds, display time : {t3-t2:2.2e} seconds\r", end='');
     
     pg.quit()
 
