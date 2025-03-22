@@ -265,7 +265,6 @@ class Grille:
         """
                 
         self.cells = np.clip(Vitalite + G*dt, 0, 1)
-        print(f"TEST {t2-t1:2.2e} & {t3-t2:2.2e}")
 
 
 
