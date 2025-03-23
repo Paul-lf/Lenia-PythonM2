@@ -77,11 +77,11 @@ class Grille:
         voisins = convolve2d(self.cells, C, mode='same', boundary='wrap') # si on met boundary en commentaire on a pas la propriété de tor
         Grille.h(voisins)
         # Point de vue continue
-        temp = self.cells+ voisins
+        temp = self.cells + voisins
         next_cells = np.clip(temp, 0, 1)          
 
         # Point de vue discontinue
-        # next_cells[voisins == 3] = 1 # les cellules entourés de 3 cellules vivantes sont vivantes 
+        #next_cells[voisins == 3] = 1 # les cellules entourés de 3 cellules vivantes sont vivantes 
         #print(f"next cells 1 : {next_cells}")
         #next_cells[(self.cells == 1) & (voisins == 2)] = 1 # les cellules entourés de deux restent vivantes
         #print(f"next cells 2 : {next_cells}")

@@ -1,18 +1,42 @@
+"""
+This file contains the initial position of interesting patterns we want to study with the lenia model: aquarium, pacman, emitter, wanderer, gaussian_spot, fish, hydrogenium, orbium.
+
+
+Example of the data needed to define a new pattern: 'pacman': [pacman_init, 'pacman', 13, 3, pacman_kernels, 0.5]
+
+    - pacman_init is an array that contains the initial pattern. Data must be real numbers between 0 to 1.
+Each pixel has a "vitality" that can be seen as a density of living cells. 
+
+    - 'pacman' is a method to compute the next iteration of cell( cf lenia_game.py).
+
+    - 13 is the number of pixels that defines an unit of length in our model.
+
+    - 3 is the number of channels. Channels are like seperate dimensions that allow us to make dissociated patterns that don't overlapp with each other.
+    Hoowever they can influence one another through the kernels.
+
+    - 0.5 is the time step.
+
+    - pacman_kernels is a list of dicionnary containg all informations on the the filters applied to the image each time. Here is an example:
+        {"b":[1],"m":0.184,"s":0.0632,"h":0.076,"r":0.56,"c0":0,"c1":0i}
+        -b is the "strength" of each ring of a filter.
+        -m and s the parameters of the gaussian filter.
+        -h a weight we multiply to the growth or target function. 
+        -r the position of the ring.
+        -c0 the channel in which we "observe the surrounding" to decide on the next generations' values.
+        -c1 the channel where the filter is applied (indeed c0 can be different to c1)
+
+
+
+Jump to line 261 to skip the pattern's definition.
+
+To run: $ python3 exemples_lenia <Available pattern> / <-h> / <-help>
+"""
+
 import os
-os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "hide" # Supress the welcome message 
+os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "hide" # Hide the welcome message of pygame
 import pygame  as pg
 import numpy   as np
-from lenia_game import Drawing, Grille
-
-"""
-This file contains the initial position of the patterns we which to study: aquarium, pacman, emitter, wanderer, gaussian_spot, fish, hydrogenium, orbium.
-Exemple:
-'pacman': [pacman_init, 'pacman', 13, 3, pacman_kernels, 0.5]. pacman_init is an array that places the pattern on the image. 'pacman' is a method to compute the next iteration of cell. 13 is the length of pixels that defines an unit of length. 3 is the number of channels, pacman_kernels is a list of dicionnary containg all information on the the filters applied to the image each time. 0.5 is the time step.
-
-This file also contains the loop to compute and display the patterns with pygame. The functions used here are defined in lenia_game.py
-
-To run : python3 exemples_lenia <Available name>/<-h>/<-help>
-"""
+from lenia_game import Drawing, Grid
 
 if __name__ == '__main__':
     
@@ -236,8 +260,6 @@ if __name__ == '__main__':
 
 
 
-
-
     
     dico_patterns = {
             'pacman': [pacman_init, 'pacman', 13, 3, pacman_kernels, 0.5],
@@ -251,41 +273,44 @@ if __name__ == '__main__':
 
 
 
-#===============================================================================================================================================
+
+#==================================================================================
+#==================================================================================
 
 
 
     iCELL = 0
-    i_a = 1
+    i_a = 1 # look in lenia_game.py
     iR = 2
     iCHANNELS = 3
     iKERNELS = 4
     idt = 5
-
+    
+    # For all kernels in every patterns the gaussian parameters are the same.
     mu_filter = 0.5
     sigma_filter = 0.15
     dt = 0.1
     choice = 'orbium'
 
-
     if len(sys.argv) > 1 :
         if sys.argv[1] == '-help' or sys.argv[1] == '-h':
             print(f"Available patterns : {list( dico_patterns.keys())}")
-            print(f"Enter : $python3 exemples_lenia.py <Available pattern>")
+            print(f"$ python3 exemples_lenia.py <Available pattern>")
             sys.exit()
         else:
             choice = sys.argv[1]
     
     else:
         print(f"Available patterns : {list( dico_patterns.keys())}")
-        print(f"Enter : $python3 exemples_lenia.py <Available pattern>")
+        print(f"$ python3 exemples_lenia.py <Available pattern>")
 
     print(f"Initial pattern chosen : {choice}")
     try:
         init_pattern = dico_patterns[choice]
         dt = init_pattern[5]
     except KeyError:
-        print("No such pattern is available. Choose among the following:", dico_patterns.keys())
+        print("Available patterns: ", list(dico_patterns.keys()))
+        print(f"$ python3 exemples_lenia.py <Available pattern>")
         exit(1)
     
     if len(sys.argv) > 2 :
@@ -298,32 +323,37 @@ if __name__ == '__main__':
         print(f"Screen resolution : {resx,resy}")
     else:
         appli = Drawing()
+    
     print(f"to quit the window press ctrl + w")
     print(f"The time step is : {dt}")
 
 
 
-    grid = Grille(init_pattern[iR], init_pattern[iCHANNELS], init_pattern[iKERNELS], init_pattern[iCELL])
+    grid = Grid(init_pattern[iR], init_pattern[iCHANNELS], init_pattern[iKERNELS], init_pattern[iCELL])
     K_lenia = grid.K_lenia(mu_filter, sigma_filter, init_pattern[i_a])
     
+
     mustContinue = True
     while mustContinue:
         
         t1 = time.time()
-        diff = grid.compute_next_iteration(K_lenia, init_pattern[i_a], dt)
+        grid.compute_next_iteration(K_lenia, init_pattern[i_a], dt)
         t2 = time.time()
 #        time.sleep(500) # A régler ou commenter pour vitesse maxi
-        appli.draw(grid.cells, init_pattern[i_a])
+        if init_pattern[i_a]!='conv':
+            appli.draw(grid.pixels, init_pattern[i_a])
+        else:
+            appli.draw(grid.pixels_pts_milieux, init_pattern[i_a])
         t3 = time.time()
 
         for event in pg.event.get():
             if event.type == pg.QUIT:
                 mustContinue = False
             elif event.type == pg.KEYDOWN:
-                pg.event.set_keyboard_grab(True)
+                pg.event.set_keyboard_grab(True) # To close the window with ctrl + w
                 if event.mod & pg.KMOD_CTRL and event.key == pg.K_w:
                     mustContinue = False
         print(f"Time to compute the next generation : {t2-t1:2.2e} seconds, display time : {t3-t2:2.2e} seconds\r", end='');
-    
+    print(f"\nnumber of iterations : {grid.nbr_iter}") 
     pg.quit()
 

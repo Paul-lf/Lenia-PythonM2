@@ -1,17 +1,30 @@
+"""
+Lenia is a mathematical life form that is a generalization of Conway's game of life to a continuous point of view. The values that pixels can take is called
+vitality because it can be thought of as the density of living pixels inside it. We assign a value between zero and one for each element of the grid.
+
+The rules of the game are changed to make time and space seem continuous: 
+    - We use ring shaped filters to assign to each pixels an "Energy" with a convolution. This generalizes the rule where the state of neighbours influences
+the state of a pixel at the next iteration.
+    - The energy of the pixel is transformed by either a growth or target function in our model which acts like a gradient of time for the vitality. 
+    - The new value for vitality is restricted to the interval [0, 1] with the function np.clip() 
+
+For this project, we change the rules slightly by transforming the infinite grid into a torus containing a finite number of pixels. The leftmost pixels have the rightmostpixels as neighbors and vice versa, and in the same way the pixels that are highest have the pixels that are lowest as neighbors and vice versa.
+
+Bibliography:
+- https://colab.research.google.com/github/OpenLenia/Lenia-Tutorial/blob/main/Tutorial_From_Conway_to_Lenia.ipynb
+- https://github.com/JuvignyEnsta/ProjetPythonM2_2025
+- https://github.com/scienceetonnante/lenia/
+"""
+
+# NOTE: soft_clip -> smooth the visualization of data ; an explicit euler scheme 
+
 import os
 os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "hide"
 import pygame  as pg
 import numpy   as np
 from scipy.signal import convolve2d
-import time
 import sys
 import math
-"""
-Bibliography:
-https://colab.research.google.com/github/OpenLenia/Lenia-Tutorial/blob/main/Tutorial_From_Conway_to_Lenia.ipynb
-https://github.com/JuvignyEnsta/ProjetPythonM2_2025
-https://github.com/scienceetonnante/lenia/
-"""
 
 iKERNEL = 0
 iC0 = 1
@@ -20,16 +33,19 @@ iMU = 3
 iSIGMA = 4
 
 
-class Grille:
+
+class Grid:
     """
-    Grille torique décrivant l'automate cellulaire.
-    En entrée lors de la création de la grille :
-        - dimensions est un tuple contenant le nombre d'éléments du maillage de l'espace dans les deux directions (nombre lignes, nombre colonnes)
-        - init_pattern est un array contenant des valeurs entre zéro et un initialisant la grille. 
+    Input parameters to create a Grid object:
+        - init_pattern is an array containing values between 0 to 1.
+        - Channels is the number of channels (One channel for each coordinate if we use a third dimension for the Grid object).
+        Each channel can interact with each other through the growth or target functions)
+        - kernels is a list of dictionnaries containing all the informations needed for the convolution (cf examples_lenia.py)
+        - R is the number of pixels that represent one unit of length
     
-    Si aucun pattern n'est donné, on tire au hasard pour chaque éléments du maillage un chiffre entre zéro et un
-    Exemple :
-       grid = Grille( (10,10), init_pattern=np.array([(2,2),(0,2),(4,2),(2,0),(2,4)], color_life=pg.Color("red"), color_dead=pg.Color("black"))
+    If no pattern is given a number between 0 to 1 is randomly given to each pixels.
+    Example :
+       grid = Grid( R=13, channels=1, kernels=[{"b":[1], "m":0.15, "s":0.015, "h":1, "r":1, "c0":0, "c1":0}], init_pattern=np.array([(2,2),(0,2),(4,2),(2,0),(2,4)] )
     """
     def __init__(self, R: int, channels: int, kernels: list, init_pattern = None):
         import random
@@ -37,20 +53,22 @@ class Grille:
             raise ValueError("channels and R are integers greater than 0")
         if init_pattern is not None:
             self.dimensions = init_pattern.shape
-            self.cells = init_pattern
+            self.pixels = init_pattern
+            self.pixels_pts_milieux = init_pattern
             self.R = R
             self.kernels = kernels
             self.channels = channels
+            self.nbr_iter = 0
         
         else:
             dim = np.random.randint(200, 500, dtype=np.uint8)
             self.dimensions = (dim, dim)
-            self.cells = np.random.uniform(0, 1, size=(dim, dim), dtype=np.double)
+            self.pixels = np.random.uniform(0, 1, size=(dim, dim), dtype=np.double)
             self.R = 13
             self.channels = 1 
 
     @staticmethod
-    def soft_clip(x): # Alternate method to deal with values above 1 or below 0 when computing the next iteration of cells
+    def soft_clip(x): # Alternate method to deal with values above 1 or below 0 when computing the next iteration of pixels that gives smoother output.
       return 1 / (1 + np.exp(-4.15 * (x - 0.5)))
 
 
@@ -66,19 +84,18 @@ class Grille:
     def K_lenia(self, mu_filter: float, sigma_filter: float, a = 'fft'):
         """
         If a is equal to 'fft' , it returns a list of lists of length equal to the number of channels.
-        Each element contains the list of all the different growth functions applied to one channel.
-        All the information on the growth function applied are of the form : [ filter, c0, h, m, s ]  
+        Each element contains the list of all the different growth or target functions applied to one channel.
+        All the informations on the growth function applied to a channel are listed in the following order: [ filter, c0, h, m, s ]  
         
-        If a is 'conv' it returns an array of size self.dimensions[: 2]
+        If a is 'conv' it returns an ndarray of size self.dimensions[: 2]
         """
 
         N, M = self.dimensions[: 2]
 
         if a == 'conv':
-            R = self.R
-            y, x = np.ogrid[-R : R , -R : R]
-            distance = np.sqrt( (1 + x)**2 + (1 + y)**2 ) / R # 13 cells length equals to 1 unit of length. 
-            K_lenia = Grille.gauss(distance, mu_filter, sigma_filter)
+            y, x = np.ogrid[-self.R : self.R , -self.R : self.R]
+            distance = np.sqrt( (1 + x)**2 + (1 + y)**2 ) / self.R # 13 pixels length equals to 1 unit of length. 
+            K_lenia = Grid.gauss(distance, mu_filter, sigma_filter)
             K_lenia[distance > 1] = 0
             K_lenia = K_lenia / np.sum(K_lenia)
             
@@ -94,7 +111,7 @@ class Grille:
                 filters = np.zeros((N,M))
                 
                 for i in range(nbr_rings):
-                    ring =  kernel["b"][i] * Grille.gauss( dist - i , mu_filter, sigma_filter)
+                    ring =  kernel["b"][i] * Grid.gauss( dist - i , mu_filter, sigma_filter)
                     ring[ (dist >= (i + 1)) | (dist < i) ] = 0
                     filters = filters + ring
 
@@ -112,21 +129,24 @@ class Grille:
 
 
 
-  
     
     def compute_next_iteration(self, K_lenia, a = 'fft', dt = 0.1):
         """
-        Returns an array of size self.dimensions which contains the next generation of cells.
+        Computes self.pixels
         """
-        Vitalite = self.cells.copy()
+        Vitalite = self.pixels.copy()
         N, M = self.dimensions[: 2]
           
 
         if a == 'conv':
             mu_croissance = 0.15
             sigma_croissance = 0.015
-            Energie = convolve2d( Vitalite, K_lenia, mode='same', boundary = 'wrap') # the first version which is too slow            
-            G = -1 + 2*Grille.gauss(Energie, mu_croissance, sigma_croissance)
+            if self.nbr_iter%2==0:
+                Energie = convolve2d( Vitalite, K_lenia, mode='same', boundary = 'wrap') # the first version which is too slow            
+                G = (-1 + 2*Grid.gauss(Energie, mu_croissance, sigma_croissance))/2
+            else:
+                Energie = convolve2d( self.pixels_pts_milieux, K_lenia, mode='same', boundary = 'wrap')
+                G = -1 + 2*Grid.gauss(Energie, mu_croissance, sigma_croissance)
 
 
         
@@ -136,14 +156,25 @@ class Grille:
                 G = np.zeros(self.dimensions)
                 if a == 'fft':
                     for kernel in K_lenia[0]:
-                        E = np.fft.ifft2( kernel[iKERNEL]* np.fft.fft2(self.cells))
+                        E = np.fft.ifft2( kernel[iKERNEL]* np.fft.fft2(Vitalite))
                         E = np.real(E)
-                        G +=  ( -1 + 2*Grille.gauss(E, kernel[iMU], kernel[iSIGMA]) ) * kernel[iH] 
+                        G +=  ( -1 + 2*Grid.gauss(E, kernel[iMU], kernel[iSIGMA]) ) * kernel[iH]  
+                    ## Uncomment to try "point milieux instead" of Euler scheme. Comment four lines above.
+                    #if self.nbr_iter%2==0:
+                     #   for kernel in K_lenia[0]:
+                      #      E = np.fft.ifft2( kernel[iKERNEL]* np.fft.fft2(Vitalite))
+                       #     E = np.real(E)
+                        #    G +=  ( -1 + 2*Grid.gauss(E, kernel[iMU], kernel[iSIGMA]) ) * kernel[iH] / 2 
+                    #else:
+                     #   for kernel in K_lenia[0]:
+                      #      E = np.fft.ifft2( kernel[iKERNEL]* np.fft.fft2(self.pixels_pts_milieux))
+                       #     E = np.real(E)
+                        #    G +=  ( -1 + 2*Grid.gauss(E, kernel[iMU], kernel[iSIGMA]) ) * kernel[iH] 
                 else:
                     for kernel in K_lenia[0]:
-                        E = np.fft.ifft2( kernel[iKERNEL]* np.fft.fft2(self.cells))
+                        E = np.fft.ifft2( kernel[iKERNEL]* np.fft.fft2(Vitalite))
                         E = np.real(E)
-                        G +=  ( Grille.gauss(E, kernel[iMU], kernel[iSIGMA]) ) * kernel[iH]
+                        G +=  ( Grid.gauss(E, kernel[iMU], kernel[iSIGMA]) ) * kernel[iH]
                     G -= Vitalite
 
 
@@ -155,36 +186,36 @@ class Grille:
                 if type(a) == str: # If we use a growth function in all channels
                     for channel, channel_kernels in enumerate(K_lenia):
                         for kernel in channel_kernels:
-                            E = np.fft.ifft2( kernel[iKERNEL] * np.fft.fft2(self.cells[:, :, kernel[iC0]] ))
+                            E = np.fft.ifft2( kernel[iKERNEL] * np.fft.fft2(self.pixels[:, :, kernel[iC0]] ))
                             E = np.real(E)
-                            G[:,:,channel] += ( -1 + 2*Grille.gauss(E, kernel[iMU], kernel[iSIGMA]) ) * kernel[iH] 
+                            G[:,:,channel] += ( -1 + 2*Grid.gauss(E, kernel[iMU], kernel[iSIGMA]) ) * kernel[iH] 
                 else:
                     for channel, channel_kernels in enumerate(K_lenia):
                         for kernel in channel_kernels:
-                            E = np.fft.ifft2( kernel[iKERNEL] * np.fft.fft2(self.cells[:, :, kernel[iC0]] ))
+                            E = np.fft.ifft2( kernel[iKERNEL] * np.fft.fft2(self.pixels[:, :, kernel[iC0]] ))
                             E = np.real(E)
                             if channel != 2: 
-                                 G[:,:,channel] += ( -1 + 2*Grille.gauss(E, kernel[iMU], kernel[iSIGMA])) * kernel[iH]
+                                 G[:,:,channel] += ( -1 + 2*Grid.gauss(E, kernel[iMU], kernel[iSIGMA])) * kernel[iH]
                             else: # We only use this option with 'pacman' where the blue channel uses a target function instead of a growth function
-                                G[:, :, channel] +=  Grille.gauss(E, kernel[iMU], kernel[iSIGMA]) * kernel[iH]
+                                G[:, :, channel] +=  Grid.gauss(E, kernel[iMU], kernel[iSIGMA]) * kernel[iH]
                         G[:, :, 2] -= Vitalite[:, :, 2]
 
 
-        else:
-            print(f"Try 'convo', 'fft', 'pacman', 'target', instead of {a}")
-            sys.exit()
-
-
 
         """
-        Compute the next generation of cells :
+        Compute the next generation of pixels :
         """
-        if a != 'pacman':
-            self.cells = np.clip( Vitalite + dt * G , 0,1)
-        else:
-            self.cells = Grille.soft_clip( Vitalite + dt * G )
-
- 
+        if a != 'pacman' and a!='conv': # and a!='fft': # Try "point milieux" scheme with orbium for instance(uncomment lines 162-171)
+            self.pixels = np.clip(Vitalite + dt * G , 0,1)
+        elif a == 'pacman':
+            self.pixels = Grid.soft_clip(Vitalite + dt * G)
+        
+        else: # Here we use the "point milieux" scheme and not the explicit Euler scheme 
+            if self.nbr_iter%2 == 0:
+                self.pixels_pts_milieux = np.clip(Vitalite + dt * G, 0, 1)
+            else:
+                self.pixels = np.clip(Vitalite + dt * G, 0, 1)
+        self.nbr_iter += 1
 
 
 class Drawing:
@@ -193,12 +224,12 @@ class Drawing:
         self.dimensions = (width, height)
         self.screen = pg.display.set_mode(self.dimensions)
 
-    def draw(self, cells, a):
+    def draw(self, pixels, a):
         """
         Surface with pygame
         """
-        if len(cells.shape) == 3: # More than one channel
-            indices = np.array([(255*cells[:,:,i]).astype(dtype=np.int32) for i in range(3)])
+        if len(pixels.shape) == 3: # More than one channel
+            indices = np.array([(255*pixels[:,:,i]).astype(dtype=np.int32) for i in range(3)])
 
             # change colors for pacman pattern:
             if a == 'pacman':
@@ -213,21 +244,21 @@ class Drawing:
             self.screen.blit(surface, (0,0))
 
 
-        elif len(cells.shape) == 2:
+        elif len(pixels.shape) == 2:
             """ Trying to imitate matplotlib.pyplot.inferno() """
             R = np.ogrid[0.:255.:256j]
             G = np.ogrid[0.:255.:256j]
             B = np.ogrid[0.:255.:256j]
             
-            indices_B = ( 204 * np.sin(cells*np.pi*5/3)  ).astype(dtype=np.int32)
-            indices_B[cells >= 0.60] = ( 130*(cells[cells >= 0.6]**6) ).astype(dtype=np.int32)
+            indices_B = ( 204 * np.sin(pixels*np.pi*5/3)  ).astype(dtype=np.int32)
+            indices_B[pixels >= 0.60] = ( 130*(pixels[pixels >= 0.6]**6) ).astype(dtype=np.int32)
 
-            indices_R = np.zeros_like(cells, dtype = np.int32)
-            indices_R[cells<0.5] = (255*(1 - (1-(cells[cells<0.5]/0.5)**0.5 )**0.5)).astype(dtype=np.int32)
-            indices_R[cells >= 0.5] = 255
+            indices_R = np.zeros_like(pixels, dtype = np.int32)
+            indices_R[pixels<0.5] = (255*(1 - (1-(pixels[pixels<0.5]/0.5)**0.5 )**0.5)).astype(dtype=np.int32)
+            indices_R[pixels >= 0.5] = 255
             
-            indices_G = (255 * (1- (1- (cells - 0.35)**2)**5)).astype(dtype=np.int32)
-            indices_G[cells < 0.35] = 0
+            indices_G = (255 * (1- (1- (pixels - 0.35)**2)**5)).astype(dtype=np.int32)
+            indices_G[pixels < 0.35] = 0
             colors = np.array([R[indices_R], G[indices_G], B[indices_B]]).T
 
             surface = pg.surfarray.make_surface(colors)
