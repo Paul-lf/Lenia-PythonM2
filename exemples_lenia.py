@@ -354,6 +354,6 @@ if __name__ == '__main__':
                 if event.mod & pg.KMOD_CTRL and event.key == pg.K_w:
                     mustContinue = False
         print(f"Time to compute the next generation : {t2-t1:2.2e} seconds, display time : {t3-t2:2.2e} seconds\r", end='');
-    print(f"\nnumber of iterations : {grid.nbr_iter}") 
+#    print(f"\nnumber of iterations : {grid.nbr_iter}") 
     pg.quit()
 

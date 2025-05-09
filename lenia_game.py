@@ -207,6 +207,7 @@ class Grid:
         """
         if a != 'pacman' and a!='conv': # and a!='fft': # Try "point milieux" scheme with orbium for instance(uncomment lines 162-171)
             self.pixels = np.clip(Vitalite + dt * G , 0,1)
+        
         elif a == 'pacman':
             self.pixels = Grid.soft_clip(Vitalite + dt * G)
         
